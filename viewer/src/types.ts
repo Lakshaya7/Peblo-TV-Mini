@@ -59,3 +59,26 @@ export function artUrl(path: string | null | undefined): string | null {
   if (path.startsWith("/static/")) return `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}${path}`
   return path
 }
+
+// AI-rendered cover page per show, served from the viewer's /covers directory.
+// Keyed by the catalogue's show_title. Drop an image at public/covers/<slug>.webp
+// (or .jpg / .png) to give that show a dedicated cover; the fallback artwork is
+// used until then.
+const SHOW_COVER_SLUGS: Record<string, string> = {
+  "The Jungle Crew": "jungle-crew",
+  "Tales of the Deep": "tales-of-the-deep",
+  "Little Scientists": "little-scientists",
+  "Space Rovers": "space-rovers",
+  "The Lost Kingdom": "the-lost-kingdom",
+  "Comedy Canvas": "comedy-canvas",
+  "Wonder Woods": "wonder-woods",
+  "Ocean Detectives": "ocean-detectives",
+}
+
+export function showCoverUrl(showTitle: string): string | null {
+  const slug = SHOW_COVER_SLUGS[showTitle]
+  if (!slug) return null
+  // Drop the AI image at public/covers/<slug>.webp (or .jpg/.png). A missing
+  // file is handled by the hero/nav fallback, so nothing breaks until then.
+  return `/covers/${slug}.webp`
+}

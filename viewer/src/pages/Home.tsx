@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import { fetchCatalogue } from "../api"
 import BlurImage from "../components/BlurImage"
-import { artUrl, LANGUAGE_NAMES, type CatalogueSection, type SearchFilters } from "../types"
+import { artUrl, showCoverUrl, LANGUAGE_NAMES, type CatalogueSection, type SearchFilters } from "../types"
 
 const trait = (v: string) => v.trim().toLowerCase()
 
@@ -142,7 +142,7 @@ function Nav({
   return (
     <nav className="sticky top-0 z-30 bg-black/90 backdrop-blur border-b border-gray-900">
       <div className="max-w-[1600px] mx-auto px-6 sm:px-10 py-3 flex items-center gap-4 flex-wrap">
-        <Link to="/" className="text-2xl font-extrabold tracking-tight text-red-600 shrink-0">
+        <Link to="/" className="text-2xl font-extrabold tracking-tight text-red-600 shrink-0 font-display">
           Peblo<span className="text-white">TV</span>
         </Link>
 
@@ -152,14 +152,14 @@ function Nav({
             value={filters.q}
             onChange={(e) => onFiltersChange({ ...filters, q: e.target.value })}
             placeholder="Search shows and episodes..."
-            className="w-full px-4 py-2 rounded bg-gray-800 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-600"
+            className="w-full px-4 py-2 rounded-full bg-gray-800 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-candy"
           />
         </div>
 
         <select
           value={filters.category}
           onChange={(e) => onFiltersChange({ ...filters, category: e.target.value })}
-          className="px-3 py-2 rounded bg-gray-800 text-sm focus:outline-none"
+          className="px-3 py-2 rounded-full bg-gray-800 text-sm focus:outline-none"
         >
           <option value="">All categories</option>
           {categories.map((c) => (
@@ -172,7 +172,7 @@ function Nav({
         <select
           value={filters.language}
           onChange={(e) => onFiltersChange({ ...filters, language: e.target.value })}
-          className="px-3 py-2 rounded bg-gray-800 text-sm focus:outline-none"
+          className="px-3 py-2 rounded-full bg-gray-800 text-sm focus:outline-none"
         >
           <option value="">All languages</option>
           {languages.map((l) => (
@@ -207,11 +207,33 @@ function Hero({
   onPlay: (epId: number) => void
 }) {
   const banner = heroShow ? artUrl(heroShow.banner_path ?? heroShow.poster_path) : null
+  const cover = showCoverUrl(section.show_title)
+  const [coverFailed, setCoverFailed] = useState(false)
 
   return (
     <div className="relative w-full h-[42vh] min-h-[360px] max-h-[620px] overflow-hidden">
       <div className="absolute inset-0">
-        {banner ? (
+        {cover && !coverFailed ? (
+          <div className="relative w-full h-full">
+            <BlurImage
+              src={cover}
+              alt={section.show_title}
+              className="w-full h-full"
+              gradientClassName="bg-gradient-to-br from-gray-900 to-gray-800"
+            />
+            {/* Detect a missing cover file and fall back to episode artwork */}
+            <img
+              src={cover}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
+              onError={(e) => {
+                setCoverFailed(true)
+                e.currentTarget.remove()
+              }}
+            />
+          </div>
+        ) : banner ? (
           <BlurImage
             src={banner}
             alt={section.show_title}
@@ -231,7 +253,7 @@ function Hero({
         <p className="text-sm text-gray-400 uppercase tracking-widest mb-1">
           {section.section}
         </p>
-        <h1 className="text-3xl sm:text-5xl font-bold drop-shadow-lg mb-3">
+        <h1 className="text-3xl sm:text-5xl font-display font-bold drop-shadow-lg mb-3">
           {section.show_title}
         </h1>
         {heroShow && (
@@ -245,13 +267,13 @@ function Hero({
         <div className="flex items-center gap-3">
           <button
             onClick={() => heroShow && onPlay(heroShow.episode_id)}
-            className="bg-white text-black font-semibold px-8 py-2.5 rounded hover:bg-gray-200 transition-colors"
+            className="bg-candy text-white font-semibold px-8 py-2.5 rounded-full hover:bg-candy-soft shadow-md shadow-candy/30 transition-colors"
           >
             ▶ Play
           </button>
           <Link
             to={`/show/${section.show_id}`}
-            className="bg-gray-700/70 text-white font-semibold px-8 py-2.5 rounded hover:bg-gray-600/70 transition-colors"
+            className="bg-gray-700/70 text-white font-semibold px-8 py-2.5 rounded-full hover:bg-gray-600/70 transition-colors"
           >
             More Info
           </Link>
@@ -273,7 +295,7 @@ function Row({ section }: { section: CatalogueSection }) {
   return (
     <div className="mt-8">
       <div className="flex items-baseline gap-3 mb-3">
-        <h2 className="text-lg sm:text-xl font-semibold text-white">
+        <h2 className="text-lg sm:text-xl font-display font-semibold text-white">
           {section.show_title}
         </h2>
         <span className="text-xs text-gray-400 uppercase tracking-wider">
@@ -294,7 +316,7 @@ function Row({ section }: { section: CatalogueSection }) {
                 src={poster}
                 alt={ep.title}
                 aspectRatio="2/3"
-                className="rounded-md w-full"
+                className="rounded-xl w-full"
                 gradientClassName="bg-gradient-to-br from-gray-800 to-gray-900"
               />
               <p className="mt-2 text-sm text-gray-300 group-hover:text-white truncate">

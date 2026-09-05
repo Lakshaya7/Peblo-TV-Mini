@@ -91,6 +91,7 @@ Startup auto-creates the schema and seeds on an empty DB, so there are no manual
 
 ### Viewer experience
 - Netflix-style home: hero banner (banner artwork) + horizontal rows per section (poster artwork).
+- Per-show **cover page**: each show can get a dedicated AI-rendered hero image (dropped into `viewer/public/covers/` as `<slug>.webp`, keyed per show), with automatic fallback to episode artwork when absent.
 - Search + filters (category, language) with a friendly empty state.
 - Show detail page: synopsis, banner, season tabs, episode lists with thumbnails, and language options for grouped episodes.
 - Trailers (Season 0) render in their own section — never as a normal season.
