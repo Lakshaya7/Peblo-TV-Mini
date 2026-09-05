@@ -90,10 +90,11 @@ Startup auto-creates the schema and seeds on an empty DB, so there are no manual
 - `POST /admin/login` returns a bearer token; the CMS stores it and attaches it to every request.
 
 ### Viewer experience
-- Netflix-style home: hero banner (banner artwork) + horizontal rows per section (poster artwork).
-- Per-show **cover page**: each show can get a dedicated AI-rendered hero image (dropped into `viewer/public/covers/` as `<slug>.webp`, keyed per show), with automatic fallback to episode artwork when absent.
+- Kid-friendly visual identity: rounded display font (Baloo 2 / Quicksand with system fallbacks), a candy-pink accent (`#ff5c8a`), pill-shaped search/filters/buttons, and softly rounded cards — playful yet still a dark, Netflix-style feel.
+- Netflix-style home: a hero banner per section + horizontal rows of 2:3 poster cards.
+- **Per-show cover pages**: every show has its own key art (`img/` gives one 2:3 poster per show), converted to `viewer/public/covers/<slug>.webp`. It renders as a sharp poster card floating over a blurred, darkened version of the same art on the home hero and the show page, and doubles as the poster in the row cards. If a cover is missing the viewer falls back to episode artwork automatically.
 - Search + filters (category, language) with a friendly empty state.
-- Show detail page: synopsis, banner, season tabs, episode lists with thumbnails, and language options for grouped episodes.
+- Show detail page: synopsis, blurred-art banner with key-art card, season tabs, episode lists with thumbnails, and language options for grouped episodes.
 - Trailers (Season 0) render in their own section — never as a normal season.
 - Slow-network friendly: blur-up placeholder images with lazy loading and a smooth fade-in.
 
@@ -170,5 +171,6 @@ Planned hardening for a production rollout (out of scope for this build, intenti
 
 - Default login: `admin` / `admin123`.
 - `catalogue.json`, `storage/`, `*.db`, and `node_modules/` are generated at runtime and kept out of version control.
+- Show key art lives in `img/` (one 2:3 poster per show); the rendered `viewer/public/covers/*.webp` are derived from it and ship with the repo. `viewer/public/covers/README.md` documents the regeneration steps.
 - Artwork specs: poster 2:3 (~600×900), banner 16:9 (~1280×720), thumbnail 16:9 (~640×360), ≤ 200 KB, JPG/JPEG/PNG/WebP.
 - Season 0 = trailers; `content_group` episodes collapse into one catalogue entry with a `languages` list.
