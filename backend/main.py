@@ -412,6 +412,7 @@ def catalog_search(
         stmt = stmt.where(
             or_(
                 Show.name.ilike(like),
+                Show.section.ilike(like),
                 Episode.title.ilike(like),
             )
         )
@@ -578,6 +579,26 @@ def validation_report(db: Session = Depends(get_db), _: str = Depends(get_admin_
 
 # ─── Publish Job ──────────────────────────────────────────────────────
 
+
+def _atomic_write_catalogue(catalogue: dict) -> None:
+    """Write the catalogue JSON atomically: temp file + rename.
+
+    Readers opening catalogue.json always see a complete file — either the
+    previous version or the new one, never a partial write.
+    """
+    catalogue_path = Path("catalogue.json")
+    temp_path = Path("catalogue.json.tmp")
+
+    def datetime_serializer(obj):
+        if hasattr(obj, "isoformat"):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+    with open(temp_path, "w") as f:
+        json.dump(catalogue, f, indent=2, default=datetime_serializer)
+    temp_path.rename(catalogue_path)
+
+
 @app.post("/admin/catalog/publish/", response_model=PublishRunOut)
 def publish_catalog(
     trigger: PublishTrigger,
@@ -601,19 +622,8 @@ def publish_catalog(
     db.refresh(run)
 
     # Write catalogue atomically: write to temp file, then rename
-    catalogue_path = Path("catalogue.json")
-    temp_path = Path("catalogue.json.tmp")
-
     try:
-        # Serialize with datetime handling
-        def datetime_serializer(obj):
-            if hasattr(obj, 'isoformat'):
-                return obj.isoformat()
-            raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
-        with open(temp_path, "w") as f:
-            json.dump(catalogue, f, indent=2, default=datetime_serializer)
-        temp_path.rename(catalogue_path)
+        _atomic_write_catalogue(catalogue)
 
         # Update run
         run.status = "completed"
@@ -676,6 +686,24 @@ def on_startup():
     os.makedirs("catalogue", exist_ok=True)
     Base.metadata.create_all(engine)
     _seed_if_empty()
+    _ensure_catalogue()
+
+
+def _ensure_catalogue():
+    """Regenerate the published catalogue file at startup.
+
+    The DB volume survives container recreation but catalogue.json lives in
+    the (ephemeral) container layer, so we rebuild it on every boot using
+    the same atomic write the publish endpoint uses. Cheap for small
+    catalogues and keeps GET /catalog working even after recreate/rollback.
+    """
+    with SessionLocal() as db:
+        try:
+            _atomic_write_catalogue(build_catalogue(db))
+        except Exception:
+            # Don't crash a fresh container without a reachable DB yet;
+            # the endpoint will surface real errors on publish.
+            pass
 
 
 def _seed_if_empty():

@@ -2,7 +2,6 @@ fastapi
 uvicorn[standard]
 sqlalchemy
 psycopg2-binary
-alembic
 httpx
 aiofiles
 pydantic[email]

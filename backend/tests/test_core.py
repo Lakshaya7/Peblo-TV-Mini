@@ -199,3 +199,15 @@ def test_search_composition():
     assert resp.status_code == 200
     titles = [r["episode_title"] for r in resp.json()]
     assert any("Jungle" in t for t in titles)
+
+
+def test_search_matches_category():
+    # q should match the show's section/category too
+    show = _make_show(client, name="Widget Watchers", section="Children")
+    season = _make_season(client, show["id"])
+    _make_episode(client, show["id"], season["id"], title="Counting Fun")
+
+    resp = client.get("/catalog/search/", params={"q": "children"})
+    assert resp.status_code == 200
+    shows = {r["show_title"] for r in resp.json()}
+    assert "Widget Watchers" in shows

@@ -23,6 +23,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    env:
+      PEBLO_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/peblo_tv_mini
+      PEBLO_SEED_ON_STARTUP: "false"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,20 +36,34 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       - name: Install Python dependencies
         run: |
           cd backend
           pip3 install --break-system-packages -r requirements.txt
 
-      - name: Create database schema
-        run: |
-          cd backend
-          python3 -c "from backend.db import engine; from backend.models import Base; Base.metadata.create_all(engine)"
-
-      - name: Run tests
+      - name: Run backend tests (against Postgres service)
         run: |
           cd backend
           python3 -m pytest
+
+      - name: Typecheck + lint CMS
+        run: |
+          cd cms
+          npm ci
+          npx tsc -b --noEmit
+          npx oxlint
+
+      - name: Typecheck + lint Viewer
+        run: |
+          cd viewer
+          npm ci
+          npx tsc -b --noEmit
+          npx oxlint
 
   build-and-publish:
     needs: lint-and-test
@@ -71,6 +89,9 @@ jobs:
 
       - name: Explain deployment
         run: |
-          echo "Deploy step: push images to Cloudflare R2 or container registry,"
-          echo "then update the docker-compose.yml to use the new image tags."
+          echo "Deploy step: push images to a container registry (e.g. GHCR or ECR)"
+          echo "with an immutable tag (git SHA), then roll out on the host:"
+          echo "  docker compose pull && docker compose up -d"
           echo "In production, use managed PostgreSQL and Cloudflare R2 for storage."
+          echo "Secrets (PEBLO_ADMIN_PASSWORD, PEBLO_R2_*, PEBLO_POSTGRES_DSN)"
+          echo "are injected from the CI/provider secrets manager at deploy time."
