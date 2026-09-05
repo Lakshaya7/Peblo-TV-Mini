@@ -9,27 +9,49 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: peblo_tv_mini
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd pg_isready -U postgres
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
 
     env:
-      PEBLO_POSTGRES_DSN: postgresql://postgres:postgres@localhost:5432/peblo_tv_mini
+      PEBLO_POSTGRES_DSN: postgresql+psycopg2://postgres:postgres@localhost:5432/peblo_tv_mini
       PEBLO_SEED_ON_STARTUP: "false"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # Postgres is started with the runner's own Docker CLI rather than a
+      # workflow `services:` container: the service-container machinery on
+      # shared runners is flaky (a pristine definition that works locally
+      # failed to initialize on the runner), and this path gives us an
+      # explicit pull-with-retry and a readiness gate we control.
+      - name: Pull Postgres image (with retry)
+        run: |
+          for i in $(seq 1 5); do
+            docker pull postgres:16-alpine && break
+            echo "pull attempt $i failed, retrying in 10s"
+            sleep 10
+          done
+
+      - name: Start Postgres
+        run: |
+          docker run -d --name peblo_pg \
+            -e POSTGRES_DB=peblo_tv_mini \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -p 5432:5432 \
+            postgres:16-alpine
+
+      - name: Wait for Postgres to accept connections
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec peblo_pg pg_isready -U postgres -d peblo_tv_mini; then
+              echo "Postgres is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres did not become ready in time"
+          docker logs peblo_pg || true
+          exit 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -46,7 +68,7 @@ jobs:
           cd backend
           pip3 install --break-system-packages -r requirements.txt
 
-      - name: Run backend tests (against Postgres service)
+      - name: Run backend tests (against Postgres)
         run: |
           cd backend
           python3 -m pytest

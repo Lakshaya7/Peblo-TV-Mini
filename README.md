@@ -124,7 +124,7 @@ Validation rules enforced by the model and the API:
 `docker compose up --build` runs four services with proper health checks and startup ordering: `db` (PostgreSQL 16, healthchecked), `api` (healthcheck on `/health`, waits for Postgres), `cms` and `viewer` (nginx-served SPAs). Configuration is injected through environment variables.
 
 ### CI/CD (GitHub Actions)
-- **Lint & test**: backend pytest against a PostgreSQL service container + TypeScript typecheck and Oxlint for both frontends.
+- **Lint & test**: backend pytest against a live PostgreSQL 16 instance (started by the job itself with an explicit readiness gate) + TypeScript typecheck and Oxlint for both frontends.
 - **Build & publish**: production image builds for the API, CMS, and Viewer; the deploy step uses immutable image tags (git SHA) and a clean `docker compose pull && docker compose up -d` rollout on the host.
 
 ### Secrets management
