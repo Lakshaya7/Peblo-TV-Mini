@@ -1,0 +1,76 @@
+name: Peblo TV CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: peblo_tv_mini
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready -U postgres
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Python dependencies
+        run: |
+          cd backend
+          pip3 install --break-system-packages -r requirements.txt
+
+      - name: Create database schema
+        run: |
+          cd backend
+          python3 -c "from backend.db import engine; from backend.models import Base; Base.metadata.create_all(engine)"
+
+      - name: Run tests
+        run: |
+          cd backend
+          python3 -m pytest
+
+  build-and-publish:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build API image
+        run: |
+          cd backend
+          docker build -t peblo-tv-mini-api:latest .
+
+      - name: Build CMS image
+        run: |
+          cd cms
+          docker build -t peblo-tv-mini-cms:latest .
+
+      - name: Build Viewer image
+        run: |
+          cd viewer
+          docker build -t peblo-tv-mini-viewer:latest .
+
+      - name: Explain deployment
+        run: |
+          echo "Deploy step: push images to Cloudflare R2 or container registry,"
+          echo "then update the docker-compose.yml to use the new image tags."
+          echo "In production, use managed PostgreSQL and Cloudflare R2 for storage."

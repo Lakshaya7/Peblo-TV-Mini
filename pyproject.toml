@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "peblo-tv-mini-backend"
+version = "1.0.0"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "psycopg2-binary",
+    "alembic",
+    "httpx",
+    "aiofiles",
+    "pydantic[email]",
+]
+
+[tool.setuptools.packages.find]
+where = ["backend"]

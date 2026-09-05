@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+dist/
+*.local
+
+# Runtime / generated artifacts (regenerated at startup by the seed)
+storage/
+catalogue.json
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/

@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: peblo_tv_mini_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: peblo_tv_mini
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./backend
+    container_name: peblo_tv_mini_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PEBLO_POSTGRES_DSN: postgresql://postgres:postgres@db:5432/peblo_tv_mini
+      PEBLO_SECRET_KEY: change-me-dev
+      PEBLO_ADMIN_PASSWORD: admin123
+      PEBLO_STORAGE_BACKEND: local
+      PEBLO_STORAGE_LOCAL_DIR: /storage
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/storage:/storage:rw
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  cms:
+    build:
+      context: ./cms
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    container_name: peblo_tv_mini_cms
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+
+  viewer:
+    build:
+      context: ./viewer
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    container_name: peblo_tv_mini_viewer
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3001:80"
+
+volumes:
+  postgres_data:
