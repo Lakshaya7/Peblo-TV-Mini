@@ -218,7 +218,7 @@ function Hero({
             <BlurImage
               src={cover}
               alt={section.show_title}
-              className="w-full h-full"
+              className="w-full h-full object-cover blur-md scale-110"
               gradientClassName="bg-gradient-to-br from-gray-900 to-gray-800"
             />
             {/* Detect a missing cover file and fall back to episode artwork */}
@@ -247,7 +247,24 @@ function Hero({
         )}
       </div>
 
+      {cover && !coverFailed && (
+        <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/30" />
+      )}
       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+
+      {cover && !coverFailed && (
+        <div className="absolute right-6 sm:right-12 top-1/2 -translate-y-1/2 hidden xl:block">
+          <div className="h-[54vh] max-h-[400px] aspect-[2/3]">
+            <BlurImage
+              src={cover}
+              alt={section.show_title}
+              aspectRatio="2/3"
+              className="w-full h-full rounded-2xl shadow-2xl shadow-black/70 ring-1 ring-white/20"
+              gradientClassName="bg-gray-800"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-0 left-0 right-0 px-6 sm:px-10 pb-12 max-w-[1600px] mx-auto">
         <p className="text-sm text-gray-400 uppercase tracking-widest mb-1">
@@ -305,7 +322,8 @@ function Row({ section }: { section: CatalogueSection }) {
 
       <div className="flex gap-4 overflow-x-auto pb-4 -mx-6 sm:-mx-10 px-6 sm:px-10 scrollbar-thin">
         {episodes.map((ep) => {
-          const poster = artUrl(ep.poster_path ?? ep.thumbnail_path)
+          const poster =
+            showCoverUrl(section.show_title) ?? artUrl(ep.poster_path ?? ep.thumbnail_path)
           return (
             <Link
               key={ep.episode_id}

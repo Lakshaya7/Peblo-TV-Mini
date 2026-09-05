@@ -71,7 +71,7 @@ export default function ShowDetail() {
       <div className="relative w-full h-[48vh] min-h-[320px] max-h-[560px] overflow-hidden">
         {cover && !coverFailed ? (
           <div className="relative w-full h-full">
-            <BlurImage src={cover} alt={section.show_title} className="w-full h-full" gradientClassName="bg-gradient-to-br from-gray-900 to-gray-800" />
+            <BlurImage src={cover} alt={section.show_title} className="w-full h-full object-cover blur-md scale-110" gradientClassName="bg-gradient-to-br from-gray-900 to-gray-800" />
             <img
               src={cover}
               alt=""
@@ -90,7 +90,23 @@ export default function ShowDetail() {
             <span className="text-5xl text-gray-700">{section.show_title[0]}</span>
           </div>
         )}
+        {cover && !coverFailed && (
+          <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/30" />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
+        {cover && !coverFailed && (
+          <div className="absolute right-6 sm:right-12 top-1/2 -translate-y-1/2 hidden xl:block">
+            <div className="h-[56vh] max-h-[420px] aspect-[2/3]">
+              <BlurImage
+                src={cover}
+                alt={section.show_title}
+                aspectRatio="2/3"
+                className="w-full h-full rounded-2xl shadow-2xl shadow-black/70 ring-1 ring-white/20"
+                gradientClassName="bg-gray-800"
+              />
+            </div>
+          </div>
+        )}
         <div className="absolute bottom-0 px-6 sm:px-10 pb-10">
           <p className="text-sm text-gray-400 uppercase tracking-widest mb-1">
             {section.section}
