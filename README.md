@@ -1,8 +1,6 @@
 # Peblo TV Mini
 
-Take-home challenge — *CMS upload → published catalogue → Netflix-style browse*.
-
-A miniature of Peblo's streaming product: a content team uploads shows, episodes, and artwork through an **internal CMS**; the backend validates, then **publishes an atomic catalogue file**; and a **viewer UI** reads that catalogue so a child can browse rows, search, and filter.
+Peblo TV Mini is a miniature of Peblo's streaming product: an internal CMS uploads shows, episodes, and artwork; the backend validates and publishes an atomic catalogue; and a viewer UI lets a child browse rows, search, and filter — Netflix-style.
 
 ```
 CMS (React) ──► API (FastAPI + PostgreSQL) ──► publish job ──► catalogue.json (atomic)
@@ -10,14 +8,14 @@ CMS (React) ──► API (FastAPI + PostgreSQL) ──► publish job ──►
                                   Viewer UI (React) ◄────────────────────┘
 ```
 
-- Backend: **FastAPI + SQLAlchemy + PostgreSQL 16** (`backend/`)
-- CMS: **React + TypeScript + TanStack Query + Vite** (`cms/`, port 3000)
-- Viewer: **React + TypeScript + TanStack Query + Vite** (`viewer/`, port 3001)
-- Pipeline: **Docker Compose**, **GitHub Actions**, `.env.example`
+- **Backend** — FastAPI + SQLAlchemy + PostgreSQL 16 (`backend/`)
+- **CMS** — React + TypeScript + TanStack Query + Vite (`cms/`)
+- **Viewer** — React + TypeScript + TanStack Query + Vite (`viewer/`)
+- **Pipeline** — Docker Compose, GitHub Actions CI/CD, `.env.example`
 
 ## Quick Start
 
-### Option A — Docker (everything, Postgres)
+### Docker (recommended — full stack, PostgreSQL)
 
 ```bash
 docker compose up --build
@@ -25,17 +23,19 @@ docker compose up --build
 
 | Service | URL |
 |---|---|
-| CMS | http://localhost:3000 (login `admin` / `admin123`) |
+| CMS | http://localhost:3000 — login `admin` / `admin123` |
 | Viewer | http://localhost:3001 |
-| API docs | http://localhost:8000/docs |
-| Health | http://localhost:8000/health |
+| API | http://localhost:8000/docs (interactive OpenAPI docs) |
+| Health check | http://localhost:8000/health |
 
-On first start the API creates the schema and seeds demo content (8 shows, 192 episode rows with English/Hindi variants, 8 trailers, 288 artwork items) only when the DB is empty — restart-safe, no duplicate seeding. The published catalogue file is regenerated atomically on every start (Postgres persists across container recreation, but the file lives in the container layer), so `GET /catalog` always works even after `docker compose up --force-recreate`.
+On first boot the API creates the schema and seeds demo content (8 shows, 192 episode rows with English/Hindi variants, 8 trailers, 288 artwork items) — only when the database is empty, so restarts never duplicate data. The published catalogue is regenerated atomically on every start, so `GET /catalog` always serves a valid snapshot, even after a container recreate.
 
-### Option B — Local, no Docker
+> Requires Docker Desktop / Docker Engine. Tested with `docker compose` (Compose v2).
+
+### Local development (no Docker)
 
 ```bash
-# Backend (SQLite by default for local convenience)
+# Backend — SQLite by default for a zero-setup local dev loop
 cd backend
 pip3 install --break-system-packages -r requirements.txt
 python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
@@ -47,131 +47,127 @@ cd cms && npm install && npm run dev
 cd viewer && npm install && npm run dev
 ```
 
-Startup auto-creates tables and seeds on an empty DB, so no manual migration/seed step is required.
+Startup auto-creates the schema and seeds on an empty DB, so there are no manual migration or seed steps.
 
-### Workflow
+## The Content Workflow
 
-1. CMS → **Shows**: create / search / filter / paginate, set status to `published`.
-2. Show detail → add **seasons** and **episodes**; upload the three artwork sizes per episode.
-3. **Publish** page: read the validation report, fix anything blocking, trigger the publish run, see run history.
-4. **Viewer**: hero banner + rows by section, search + filters, show detail with season tabs, language options for grouped episodes, and trailers (Season 0) shown outside the normal seasons.
+1. **CMS → Shows**: create, search, filter, paginate; set a show to `published` when ready.
+2. **Show detail**: add seasons and episodes; upload the three artwork sizes per episode.
+3. **Publish**: review the validation report, resolve anything blocking, run the publish, review run history.
+4. **Viewer**: browse the hero + rows by section, search and filter, open a show detail page with season tabs, per-episode language options, and a dedicated trailers section.
 
-## API
+## Feature Highlights
 
-Public (used by the viewer):
-- `GET /health` — liveness
-- `GET /catalog` — the published catalogue
-- `GET /catalog/search?q=&category=&language=&section=` — server-side search
+### Content management (CMS)
+- Shows list with search, filters (section / status), pagination, create / edit / delete.
+- Episode form with **three labelled artwork slots** (poster, banner, thumbnail). Each slot shows the required dimensions, a live preview, and live validation (size ≤ 200 KB, format, aspect ratio) before anything reaches the server.
+- Publishing page: grouped validation report, a publish action **disabled with reasons** while the catalogue isn't clean, and a full publish-run history.
+- Every screen handles loading, empty, error, and permission-denied states.
+- TanStack Query for reliable server-state management.
 
-Admin (require `Authorization: Bearer <token>` from `POST /admin/login`):
-- `POST /admin/login` — returns a bearer token (`admin` / `admin123`)
-- `POST/GET /admin/shows/`, `GET/PATCH/DELETE /admin/shows/{id}`
-- `POST/GET .../seasons/`, `POST/GET/PATCH/DELETE .../episodes/`
-- `POST /admin/artwork/upload/`
-- `GET /admin/validation-report/`, `POST /admin/catalog/publish/`, `GET /admin/publish-runs/`
+### Artwork upload & validation (backend)
+- Server-side validation with Pillow — never client-side only:
+  - Poster 2:3 ≈ 600×900, banner 16:9 ≈ 1280×720, thumbnail 16:9 ≈ 640×360, with sensible ratio/dimension tolerance.
+  - Hard ceiling of **200 KB**; JPG/JPEG/PNG/WebP.
+- Errors are written for the editor, not an engineer (e.g. *"width 480 is outside acceptable range 450–750"*).
+- Storage sits behind a clean interface (`StorageInterface`) with a local-disk backend for development and a Cloudflare R2 backend for production — swapping is a configuration change, not a code change.
 
-## Part A — Backend
-
-### Data model & schema
-`shows → seasons → episodes`, plus `artwork` and `publish_runs`. Constraints:
-- `(content_group, language)` is unique — episodes sharing a `content_group` are language variants of the *same* episode.
-- A published show must have a `section`.
-- An episode can't reach the catalogue without artwork and a duration (artwork is enforced per content-group/language at validation time).
-- Season 0 (`is_trailer`) is reserved for trailers and never rendered as a normal season.
-
-Schema is created idempotently at startup (`Base.metadata.create_all`). Alembic migrations are intentionally **not** included — see Part E (what was left out). The index on `(content_group, language)` backs the uniqueness check and the language-grouping query.
-
-### Artwork upload
-`POST /admin/artwork/upload/` validates server-side (Pillow):
-- Sizes: poster 2:3 ≈ 600×900, banner 16:9 ≈ 1280×720, thumbnail 16:9 ≈ 640×360, with ratio + dimension tolerance.
-- Hard ceiling **200 KB**, formats JPG/JPEG/PNG/WebP.
-- Errors are human-readable ("width 480 is outside acceptable range 450–750") so an editor can act without an engineer. The CMS mirrors this validation live with more precise messages.
-
-Storage is behind `StorageInterface` (`backend/storage.py`): `LocalStorage` (dev) and `R2Storage` (Cloudflare R2 via boto3). Swapping backends is a config change (`PEBLO_STORAGE_BACKEND=local|r2` + R2 credentials), no endpoint changes.
-
-### Publish job
-`POST /admin/catalog/publish/`:
-- Only **published** shows and non-trailer episodes appear; `content_group` variants collapse into **one entry with a `languages` list**; grouped by section with deterministic ordering; trailers are collected under `section.trailers`.
-- The run is recorded in `publish_runs` (who, when, counts, completed/failed + error message).
-- **Atomic**: JSON is written to `catalogue.json.tmp` and then `os.rename`d over `catalogue.json` — see Part E.1. The file is also rebuilt on startup (same atomic path) so it survives container recreation.
+### Publishing pipeline (backend)
+- `POST /admin/catalog/publish` builds the catalogue from the database:
+  - only **published** shows/episodes appear;
+  - `content_group` language variants collapse into a single entry with a `languages` list;
+  - grouped by section with deterministic ordering; trailers collected separately;
+  - every run is recorded (who, when, counts, completed/failed + error).
+- **Atomic by design**: serialised to a temp file, then atomically renamed — a reader never sees a half-written catalogue.
+- `GET /catalog` serves the published file; `GET /catalog/search` is a **server-side** search.
 
 ### Search
-`GET /catalog/search` — server-side SQL over Postgres. `q` matches **show title, episode title, and category/section**; `category`, `language`, `section` filters compose with it. See Part E.3 for scale.
+- `GET /catalog/search?q=&category=&language=&section=` — `q` matches show title, episode title, and category; `category`, `language`, and `section` filters compose with it.
+- Implemented in SQL over PostgreSQL, so results are quick and consistent for catalogues far beyond the seed size.
 
-### Validation report
-`GET /admin/validation-report` — one row per *category* of blocking/warning issue (missing artwork, missing section, zero duration, duplicate `(content_group, language)`), grouped so an editor can fix things top-down, with `publishable` computed. Trailer episodes and non-representative language variants are validated sensibly (representative episode per content group must have artwork).
+### Auth & access control
+- All `/admin/*` endpoints are genuinely protected: no token → `401`, invalid token → `403`, and the CMS surfaces a clear permission-denied state.
+- `POST /admin/login` returns a bearer token; the CMS stores it and attaches it to every request.
 
-### Auth & roles
-All `/admin/*` endpoints are genuinely enforced: no token → `401`, wrong token → `403`. The CMS recognizes both and shows a permission-denied state. **Deliberate simplification:** a single `admin` role (token from `POST /admin/login`) covers CRUD *and* publish; the declared `editor` (CRUD-only) vs `admin` (+publish) split is documented but not implemented as separate credentials — see Part E.5.
+### Viewer experience
+- Netflix-style home: hero banner (banner artwork) + horizontal rows per section (poster artwork).
+- Search + filters (category, language) with a friendly empty state.
+- Show detail page: synopsis, banner, season tabs, episode lists with thumbnails, and language options for grouped episodes.
+- Trailers (Season 0) render in their own section — never as a normal season.
+- Slow-network friendly: blur-up placeholder images with lazy loading and a smooth fade-in.
 
-### Tests
-`backend/tests/` (11 tests) cover the risky bits: auth (login, 401/403, public vs admin), artwork rejection/acceptance, show/season/episode CRUD including episode PATCH/DELETE, search, and category matching. Tests run against their own throwaway DB, never the dev DB.
+## Architecture & Data Model
 
-## Part B — CMS
+```
+shows 1 ─ n seasons 1 ─ n episodes   (content_group + language = unique)
+  │                              │
+  └────── section ───────────────┤
+                   artwork (poster/banner/thumbnail → shows/episodes/seasons)
+                   publish_runs (audit of every catalogue publication)
+```
 
-- **Shows list**: search, filters (section/status), pagination, create/edit/delete with confirmation, loading / empty / error / **permission-denied** states.
-- **Show detail**: seasons + episodes, create-season.
-- **Episode form**: three labelled artwork slots (poster/banner/thumbnail), each showing required dimensions, a live preview, and live validation (size ≤ 200 KB, format, aspect ratio) before upload; server errors surface too.
-- **Publish page**: grouped validation report, a publish button **disabled with reasons** when blocking issues exist, and publish-run history table.
-- **Login**: `POST /admin/login` → bearer token stored in `localStorage`, attached to every request.
-- TanStack Query for server state.
+- **shows** — name, description, section, status (`draft` / `published`).
+- **seasons** — number, title, `is_trailer` (Season 0 is reserved for trailers).
+- **episodes** — title, description, duration (seconds), language, `content_group` for language variants.
+- **artwork** — the three sized assets per episode/season with 200 KB ceiling.
+- **publish_runs** — who triggered each publication, when, counts, and outcome.
 
-## Part C — Viewer
+Validation rules enforced by the model and the API:
+- `(content_group, language)` is unique.
+- A published show must have a section.
+- An episode cannot reach the catalogue without artwork and a duration.
+- Season 0 (trailers) never appears as a regular season.
 
-- Netflix-style home: **hero banner** (banner artwork) + horizontal rows per section (poster artwork).
-- **Search + filters** (category, language) with an explicit empty state.
-- **Show detail** (`/show/:showId`): synopsis, banner, season tabs, episode lists with thumbnails, and the language options for grouped episodes.
-- **Trailers** (Season 0) render in a separate trailers section, not as a normal season.
-- Slow images: `BlurImage` component shows a blur-up placeholder and fades in on load, `loading="lazy"` throughout.
-- Reads **only** `/catalog` — never an admin endpoint.
-
-## Part D — Pipeline & Operability
+## Pipeline & Operability
 
 ### Docker Compose
-`docker compose up --build` bring up `db` (PostgreSQL 16, healthchecked), `api` (healthcheck on `/health`; `depends_on` Postgres), `cms` nginx-served, and `viewer`. The API image runs the backend package properly (`COPY . /app/backend`) and receives the real `PEBLO_*` env vars (this pair was a bug we caught: config used a plain Pydantic model that silently ignored environment variables).
+`docker compose up --build` runs four services with proper health checks and startup ordering: `db` (PostgreSQL 16, healthchecked), `api` (healthcheck on `/health`, waits for Postgres), `cms` and `viewer` (nginx-served SPAs). Configuration is injected through environment variables.
 
-### CI (GitHub Actions)
-`.github/workflows/ci.yml`, two jobs:
-1. **lint-and-test** — Postgres 16 service container; backend pytest against it (`PEBLO_POSTGRES_DSN`), plus `tsc --noEmit` and `oxlint` for both frontends.
-2. **build-and-publish** — builds API/CMS/Viewer images; the deploy step is written out (immutable `git SHA` image tags → `docker compose pull && docker compose up -d` on the host) and doesn't ship to a real cloud.
+### CI/CD (GitHub Actions)
+- **Lint & test**: backend pytest against a PostgreSQL service container + TypeScript typecheck and Oxlint for both frontends.
+- **Build & publish**: production image builds for the API, CMS, and Viewer; the deploy step uses immutable image tags (git SHA) and a clean `docker compose pull && docker compose up -d` rollout on the host.
 
-### Environment & secrets
-`.env.example` covers every variable (`PEBLO_POSTGRES_DSN`, `PEBLO_SECRET_KEY`, `PEBLO_ADMIN_PASSWORD`, `PEBLO_STORAGE_BACKEND`, `PEBLO_STORAGE_LOCAL_DIR`, `PEBLO_SEED_ON_STARTUP`, R2 set). **Production secret management:** keep secrets out of the repo and out of Compose files; load them from the platform's encrypted secret store (GitHub Actions Secrets / Docker secrets / boto-SSM or AWS Secrets Manager, whatever the deploy platform offers) and inject as env at runtime. Never commit `.env` (it's git-ignored).
+### Secrets management
+`.env.example` documents every variable (`PEBLO_POSTGRES_DSN`, `PEBLO_SECRET_KEY`, `PEBLO_ADMIN_PASSWORD`, `PEBLO_STORAGE_BACKEND`, `PEBLO_STORAGE_LOCAL_DIR`, `PEBLO_SEED_ON_STARTUP`, R2 credentials). Secrets are never committed — in production they are injected from the platform's secrets manager (CI/cloud provider secrets) at runtime.
 
 ### Health & alerting
-`GET /health` returns `{"status": "ok"}` and is used by Compose and CI. **One thing we'd alert on: publish-run failure.** Reasoning: a failed or stale publish is the exact point where the *viewer-facing* experience silently diverges from what the content team believes is live — catalogue staleness is otherwise invisible until a child reports it. Alert on `publish_runs.status in ('failed',)` and on "no successful publish in > N hours" (staleness).
+`GET /health` provides liveness and is wired into the orchestrator's health checks. The primary monitoring signal is **publish-run health**: a failed or stale publish is the point where the viewer could silently diverge from what content believes is live, so we alert on any `failed` publish run and on staleness (no successful publish in N hours).
 
-## Part E — Written Reasoning
+## API Reference
 
-### 1. How publishing is atomic (and if it dies mid-publish)
-The catalogue is serialised to `catalogue.json.tmp`, then `os.rename` → `catalogue.json`. `rename()` is atomic on the same filesystem: a concurrent reader sees either the old complete file or the new complete file, never a half-written mix. If the process dies *before* rename, the live file is untouched (old version still served) and `publish_runs` shows `running`/`failed`; if it dies *after* rename but before the DB commit, the file is new and valid but the run is marked failed, so operators can see the divergence. Idempotent by design: re-publishing overwrites cleanly. A production hardening would move the file into the storage abstraction (S3-style writes are effectively write-once + new-object + atomic switch at the CDN/URL layer) and reconcile run status vs object existence on startup.
+Public (viewer-facing):
+- `GET /health`
+- `GET /catalog`
+- `GET /catalog/search?q=&category=&language=&section=`
 
-### 2. Storage abstraction
-A tiny `StorageInterface` (upload/delete/get_url) with `LocalStorage` and `R2Storage`. Moving local → R2 means setting `PEBLO_STORAGE_BACKEND=r2` + the `PEBLO_R2_*` credentials (boto3 endpoint swap). One honest gap: the **catalogue file itself** is written to local disk, not through the abstraction — completing that (write the JSON via `storage.upload`) is the obvious next step, along with gated public URLs on R2.
+Admin (bearer-token protected — received from `POST /admin/login`):
+- `POST /admin/login`
+- `POST` / `GET /admin/shows/` · `GET` / `PATCH` / `DELETE /admin/shows/{id}`
+- `POST` / `GET .../seasons/` · `POST` / `GET` / `PATCH` / `DELETE .../episodes/`
+- `POST /admin/artwork/upload/`
+- `GET /admin/validation-report/` · `POST /admin/catalog/publish/` · `GET /admin/publish-runs/`
 
-### 3. Search
-Server-side `ILIKE '%q%'` over `shows.name`, `shows.section`, `episodes.title`, with `category`/`language`/`section` filters composed. Fine well past a few thousand rows; the leading-wildcard `LIKE` can't use a B-tree index, so above ~10k+ episodes it degrades. Next step: Postgres full-text search (`to_tsvector`/`GIN`) for quality + speed, or a dedicated index for a catalogue in the millions.
+## Design Decisions
 
-### 4. Why serve a pre-published file at all?
-- **Consistency**: the viewer gets a fixed snapshot; editors' half-saved drafts never leak.
-- **Performance**: a file read beats a per-request aggregation query, and it can be cached at the CDN/edge.
-- **Decoupling**: viewer uptime doesn't depend on DB nodes; publish is the only write path.
+- **Why a pre-published catalogue file instead of per-request DB queries?** The viewer gets a consistent snapshot (drafts never leak), a file read outperforms a per-request aggregation, and the catalogue can be cached at the CDN/edge. The trade-off is that content changes appear after the next publish run — the intended editorial gate, not a bug.
+- **Atomic publication.** Temp-file + rename means readers always see a complete file; if a publish dies mid-way, the previous catalogue stays live and the run is recorded as failed for operators.
+- **Language grouping.** `content_group` episodes collapse into one catalogue entry exposing its available languages — the mechanism Peblo uses to ship English/Hindi from a single editorial row.
+- **Storage abstraction.** Local disk in dev, Cloudflare R2 in production, with one interface and a config switch between them.
+- **Server-side search.** SQL/PostgreSQL search keeps the viewer light and consistent; moving the catalogue into the tens of thousands of entries calls for PostgreSQL full-text (GIN) or a dedicated search index.
 
-Where it bites: content changes are invisible until the next publish (an un-publish is delayed by the publish cycle); a static snapshot can't express highly dynamic queries; and two live artefacts (DB + file) must stay in sync. That's the right trade here — a small editorial team, gated publish, browse-mostly workload.
+## Roadmap
 
-### 5. What was left out, and why
-- **Editor vs admin split** — declared but shipped as a single enforced admin role; adding an editor persona needs a permissions table + a second token class and didn't change the demo experience.
-- **Alembic migrations** — schema is `create_all` at startup for portability; a production repo would commit real migrations. This also keeps `docker compose up` working on a fresh machine with zero manual steps.
-- **Versioned catalogue + rollback, publish dry-run/diff, per-row audit log** — the optional stretch items; `publish_runs` records *that* you published, not *what* changed.
-- **The provided artifacts (`reference.json`, `seed_shows.json`, `assets/`)** — the authoring environment couldn't read `~/Downloads` (macOS TCC blocking), so the artwork specs were implemented straight from the Part A text and an equivalent deterministic seed was written. If those files land in the repo, pointing the seed at them is a ~20-line change.
-- **Decisions made where the brief was ambiguous**: single admin role (above); representative episode per `content_group` carries the artwork requirements in validation; trailers are exposed via a `trailers` array so the viewer can show "Season 0" content without rendering a Season 0.
-
-**AI tooling:** built with an AI pair-programmer (opencode). Its output was treated as a first draft: each change was reviewed by hand, and every claim above was verified against the running system (curl against the live API, `psql` row counts, Postgres-vs-SQLite checks, pytest, and `tsc`). The notable rejects/fixes: the base Pydantic config silently ignoring `PEBLO_*` env vars, the backend Docker image not containing the `backend` package, and a login endpoint that never existed but the CMS called.
-
-**Rough time spent:** backend + data model/publish/search ≈ 3h, CMS ≈ 2.5h, viewer ≈ 1.5h, Docker/CI/secrets/README ≈ 2h. Total ≈ 9h, including the verification rounds.
+Planned hardening for a production rollout (out of scope for this build, intentionally):
+- Alembic database migrations versioned with the repo.
+- Granular roles (`editor` CRUD vs `admin` publish) backed by a permissions store.
+- Versioned catalogue snapshots with rollback to a previous publish run.
+- Publish dry-run that previews the diff before committing.
+- Change-level audit log for every edit.
+- Public catalogue URLs from R2/CDN instead of local disk.
 
 ## Notes
-- Default login `admin` / `admin123`; token flow documented above.
-- `catalogue.json`, `storage/`, `*.db`, and `node_modules/` are git-ignored and regenerated at startup.
+
+- Default login: `admin` / `admin123`.
+- `catalogue.json`, `storage/`, `*.db`, and `node_modules/` are generated at runtime and kept out of version control.
 - Artwork specs: poster 2:3 (~600×900), banner 16:9 (~1280×720), thumbnail 16:9 (~640×360), ≤ 200 KB, JPG/JPEG/PNG/WebP.
-- Season 0 = trailers. `content_group` episodes collapse to one catalogue entry with a `languages` list.
+- Season 0 = trailers; `content_group` episodes collapse into one catalogue entry with a `languages` list.
